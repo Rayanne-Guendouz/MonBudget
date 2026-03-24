@@ -1,112 +1,116 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
+import { useRouter } from 'expo-router';
+import db from '../../database';
+import { addMouvement, getCategories, getFrequences } from '../../services/budgetService';
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+export default function AddScreen() {
+  const router = useRouter();
+  
+  // États pour le formulaire
+  const [nom, setNom] = useState('');
+  const [valeur, setValeur] = useState('');
+  const [valeurPrev, setValeurPrev] = useState('');
+  const [type, setType] = useState<'Entrée' | 'Sortie'>('Sortie');
+  const [etat, setEtat] = useState<'Encaissé' | 'En attente'>('En attente');
+  
+  const [categories, setCategories] = useState<any[]>([]);
+  const [selectedCat, setSelectedCat] = useState('');
+  const [frequences, setFrequences] = useState<any[]>([]);
+  const [selectedFreq, setSelectedFreq] = useState('');
 
-export default function TabTwoScreen() {
+  // Charger les listes au démarrage
+  useEffect(() => {
+    const loadData = async () => {
+      const cats = await getCategories();
+      const freqs = await getFrequences();
+      setCategories(cats);
+      setFrequences(freqs);
+      if (cats.length > 0) setSelectedCat(cats[0].id.toString());
+      if (freqs.length > 0) setSelectedFreq(freqs[0].id.toString());
+    };
+    loadData();
+  }, []);
+
+  const handleSave = async () => {
+    if (!nom || (!valeur && !valeurPrev)) {
+      Alert.alert("Erreur", "Merci de remplir au moins le nom et un montant.");
+      return;
+    }
+
+    const nouveauMouvement = {
+      nom,
+      date: new Date().toISOString().split('T')[0], // Format YYYY-MM-DD
+      valeur: parseFloat(valeur) || 0,
+      valeur_previsionnelle: parseFloat(valeurPrev) || 0,
+      type,
+      etat,
+      frequence_id: parseInt(selectedFreq),
+      categorie_id: parseInt(selectedCat),
+      sous_categorie_id: null // On pourra ajouter la gestion des sous-cat plus tard
+    };
+
+    await addMouvement(nouveauMouvement);
+    Alert.alert("Succès", "Mouvement enregistré !");
+    
+    // Réinitialisation et retour à l'accueil
+    setNom(''); setValeur(''); setValeurPrev('');
+    router.replace('/'); 
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+    <ScrollView style={styles.container}>
+      <Text style={styles.title}>Nouvelle Opération</Text>
+
+      <Text style={styles.label}>Nom de l&apos;opération</Text>
+      <TextInput style={styles.input} value={nom} onChangeText={setNom} placeholder="ex: Courses Leclerc" />
+
+      <View style={styles.row}>
+        <View style={{ flex: 1, marginRight: 10 }}>
+          <Text style={styles.label}>Valeur Réelle (€)</Text>
+          <TextInput style={styles.input} value={valeur} onChangeText={setValeur} keyboardType="numeric" placeholder="0.00" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Valeur Prévue (€)</Text>
+          <TextInput style={styles.input} value={valeurPrev} onChangeText={setValeurPrev} keyboardType="numeric" placeholder="0.00" />
+        </View>
+      </View>
+
+      <Text style={styles.label}>Type & État</Text>
+      <View style={styles.row}>
+        <Picker style={styles.picker} selectedValue={type} onValueChange={(v) => setType(v)}>
+          <Picker.Item label="Sortie (-)" value="Sortie" />
+          <Picker.Item label="Entrée (+)" value="Entrée" />
+        </Picker>
+        <Picker style={styles.picker} selectedValue={etat} onValueChange={(v) => setEtat(v)}>
+          <Picker.Item label="En attente" value="En attente" />
+          <Picker.Item label="Encaissé" value="Encaissé" />
+        </Picker>
+      </View>
+
+      <Text style={styles.label}>Catégorie</Text>
+      <View style={styles.pickerContainer}>
+        <Picker selectedValue={selectedCat} onValueChange={(v) => setSelectedCat(v)}>
+          {categories.map(c => <Picker.Item key={c.id} label={c.nom} value={c.id.toString()} />)}
+        </Picker>
+      </View>
+
+      <TouchableOpacity style={styles.button} onPress={handleSave}>
+        <Text style={styles.buttonText}>Enregistrer</Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
-  },
-  titleContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  container: { flex: 1, padding: 20, backgroundColor: '#fff' },
+  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, color: '#2c3e50' },
+  label: { fontSize: 14, fontWeight: '600', color: '#7f8c8d', marginBottom: 5, marginTop: 15 },
+  input: { borderWidth: 1, borderColor: '#ddd', padding: 12, borderRadius: 8, fontSize: 16 },
+  row: { flexDirection: 'row', justifyContent: 'space-between' },
+  picker: { flex: 1, height: 50 },
+  pickerContainer: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8 },
+  button: { backgroundColor: '#3498db', padding: 15, borderRadius: 10, marginTop: 30, alignItems: 'center' },
+  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
 });
