@@ -28,6 +28,14 @@ export default function HomeScreen() {
   const [selectedItem, setSelectedItem] = useState<Mouvement | null>(null);
   const [montantSaisi, setMontantSaisi] = useState('');
 
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  };
+
   const loadData = async () => {
     const year = currentDate.getFullYear();
     const month = (currentDate.getMonth() + 1).toString().padStart(2, '0');
@@ -110,12 +118,26 @@ export default function HomeScreen() {
   };
 
   const renderRightActions = (id: number) => (
-    <TouchableOpacity style={styles.deleteButton} onPress={() => {
-      Alert.alert("Supprimer", "Confirmer ?", [
-        { text: "Non" },
-        { text: "Oui", style: 'destructive', onPress: async () => { await deleteMouvement(id); loadData(); }}
-      ]);
-    }}>
+    <TouchableOpacity 
+      style={styles.deleteButton} 
+      onPress={() => {
+        Alert.alert(
+          "Suppression", 
+          "Voulez-vous vraiment supprimer cette opération ?", 
+          [
+            { text: "Annuler", style: "cancel" },
+            { 
+              text: "Supprimer", 
+              style: "destructive", 
+              onPress: async () => { 
+                await deleteMouvement(id); 
+                loadData(); 
+              } 
+            }
+          ]
+        );
+      }}
+    >
       <Text style={styles.deleteText}>🗑️ Effacer</Text>
     </TouchableOpacity>
   );
@@ -159,6 +181,8 @@ export default function HomeScreen() {
         <FlatList
           data={mouvements}
           keyExtractor={(item) => item.id.toString()}
+          refreshing={refreshing} // État du chargement
+          onRefresh={onRefresh}   // Fonction déclenchée au tirage
           renderItem={({ item }) => (
             <Swipeable renderRightActions={() => renderRightActions(item.id)} overshootRight={false}>
               <TouchableOpacity 
@@ -166,9 +190,16 @@ export default function HomeScreen() {
                 style={[styles.card, item.etat === 'Encaissé' ? styles.cardEncaissee : styles.cardAttente]}
                 onPress={() => openPointerModal(item)}
               >
-                <View>
-                  <Text style={styles.nom}>{item.nom}</Text>
-                  <Text style={styles.date}>{item.date}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {/* ICÔNE DYNAMIQUE SELON LE TYPE */}
+                  <Text style={{ fontSize: 20, marginRight: 12 }}>
+                    {item.type === 'Sortie' ? '💸' : '💰'}
+                  </Text>
+                  
+                  <View>
+                    <Text style={styles.nom}>{item.nom}</Text>
+                    <Text style={styles.date}>{item.date}</Text>
+                  </View>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={[styles.valeurItem, { color: item.type === 'Sortie' ? '#e74c3c' : '#2ecc71' }]}>
