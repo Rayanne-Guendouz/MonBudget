@@ -13,6 +13,7 @@ interface Mouvement {
   valeur: number;
   valeur_previsionnelle: number;
   etat: 'Encaissé' | 'En attente';
+  categorie_nom: string;
 }
 
 export default function HomeScreen() {
@@ -30,6 +31,9 @@ export default function HomeScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
 
+  const [triParType, setTriParType] = useState(false);
+  const [triParCategorie, setTriParCategorie] = useState(false);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadData();
@@ -43,19 +47,47 @@ export default function HomeScreen() {
     let query = '';
     let params: any[] = [];
 
+    const baseQuery = `
+      SELECT 
+        m.*, 
+        c.nom AS categorie_nom 
+      FROM mouvements m
+      LEFT JOIN categories c ON m.categorie_id = c.id
+    `;
+
     if (viewMode === 'mensuel') {
-      // Filtre sur le mois précis (ex: 2024-03%)
-      query = "SELECT * FROM mouvements WHERE date LIKE ? ORDER BY date DESC";
+      query = `${baseQuery} WHERE m.date LIKE ? ORDER BY m.date DESC`;
       params = [`${year}-${month}%`];
     } else {
-      // Filtre sur l'année entière (ex: 2024-%)
-      query = "SELECT * FROM mouvements WHERE date LIKE ? ORDER BY date DESC";
+      query = `${baseQuery} WHERE m.date LIKE ? ORDER BY m.date DESC`;
       params = [`${year}-%`];
     }
 
     const data = await db.getAllAsync(query, params) as Mouvement[];
-    setMouvements(data);
-    calculerSoldes(data);
+
+    let dataTriee = [...data];
+
+    if (triParCategorie || triParType) {
+      dataTriee.sort((a, b) => {
+        // 1. Priorité au tri par Type (si activé)
+        if (triParType) {
+          if (a.type === 'Entrée' && b.type === 'Sortie') return -1;
+          if (a.type === 'Sortie' && b.type === 'Entrée') return 1;
+        }
+
+        // 2. Tri par Catégorie (si activé)
+        if (triParCategorie) {
+          // On compare les noms de catégories (ou les IDs si tu préfères)
+          const catA = a.categorie_nom || ""; 
+          const catB = b.categorie_nom || "";
+          return catA.localeCompare(catB);
+        }
+
+        return 0;
+      });
+}
+
+setMouvements(dataTriee);
   };
 
   const calculerSoldes = (data: Mouvement[]) => {
@@ -91,7 +123,8 @@ export default function HomeScreen() {
   useFocusEffect(
   useCallback(() => { 
     loadData(); 
-  }, [currentDate, viewMode])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDate, viewMode,triParType,triParCategorie])
 );
 
   // Ouvrir la modale de pointage
@@ -177,7 +210,29 @@ export default function HomeScreen() {
             <Text style={[styles.soldeValeur, { color: soldePrev >= 0 ? '#3498db' : '#e74c3c' }]}>{soldePrev.toFixed(2)} €</Text>
           </View>
         </View>
+        <View style={styles.filterBar}>
+          {/* Tri par Type */}
+          <TouchableOpacity 
+            style={styles.filterItem} 
+            onPress={() => setTriParType(!triParType)}
+          >
+            <View style={[styles.checkbox, triParType && styles.checkboxActive]}>
+              {triParType && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+            <Text style={styles.filterLabel}>Par Type</Text>
+          </TouchableOpacity>
 
+          {/* Tri par Catégorie */}
+          <TouchableOpacity 
+            style={styles.filterItem} 
+            onPress={() => setTriParCategorie(!triParCategorie)}
+          >
+            <View style={[styles.checkbox, triParCategorie && styles.checkboxActive]}>
+              {triParCategorie && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+            <Text style={styles.filterLabel}>Par Catégorie</Text>
+          </TouchableOpacity>
+        </View>
         <FlatList
           data={mouvements}
           keyExtractor={(item) => item.id.toString()}
@@ -198,7 +253,9 @@ export default function HomeScreen() {
                   
                   <View>
                     <Text style={styles.nom}>{item.nom}</Text>
-                    <Text style={styles.date}>{item.date}</Text>
+                    <Text style={styles.date}>
+                      {item.date} {item.categorie_nom ? `• ${item.categorie_nom}` : ''}
+                    </Text>
                   </View>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
@@ -324,5 +381,40 @@ const styles = StyleSheet.create({
   btnCancel: { backgroundColor: '#f1f2f6', marginRight: 10 },
   btnConfirm: { backgroundColor: '#2ecc71' },
   btnText: { fontWeight: 'bold', color: '#7f8c8d' },
-  btnTextConfirm: { fontWeight: 'bold', color: '#fff' }
+  btnTextConfirm: { fontWeight: 'bold', color: '#fff' },
+  filterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+  },
+  filterLabel: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    marginRight: 10,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderWidth: 2,
+    borderColor: '#3498db',
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  checkboxActive: {
+    backgroundColor: '#3498db',
+  },
+  checkmark: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  filterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
 });
