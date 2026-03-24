@@ -1,12 +1,36 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { View, Platform } from 'react-native';
+import db from '@/database';
 
 export default function TabLayout() {
+  const [pendingCount, setPendingCount] = useState(0);
   const insets = useSafeAreaInsets(); // Récupère les bordures de sécurité du téléphone
 
+  // Fonction pour compter les opérations en attente
+  const updatePendingCount = async () => {
+    try {
+      const result = await db.getAllAsync(
+        "SELECT COUNT(*) as count FROM mouvements WHERE etat = 'En attente'"
+      ) as any[];
+      if (result && result.length > 0) {
+        setPendingCount(result[0].count);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // On met à jour le badge régulièrement
+  useEffect(() => {
+    updatePendingCount();
+    // On peut ajouter un intervalle ou se baser sur le focus
+    const interval = setInterval(updatePendingCount, 3000); 
+    return () => clearInterval(interval);
+  }, []);
+  
   return (
     <Tabs
       screenOptions={{
@@ -45,15 +69,20 @@ export default function TabLayout() {
         },
       }}
     >
+      
+      {/* 1. ACCUEIL AVEC BADGE */}
       <Tabs.Screen
         name="index"
         options={{
           title: 'Accueil',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'wallet' : 'wallet-outline'} size={24} color={color} />
-          ),
+          tabBarIcon: ({ color }) => <Ionicons name="home" size={26} color={color} />,
+          // Affiche le badge seulement s'il y a plus de 0 éléments
+          tabBarBadge: pendingCount > 0 ? pendingCount : undefined,
+          tabBarBadgeStyle: { backgroundColor: '#e74c3c' }, 
         }}
       />
+
+      
 
       <Tabs.Screen
         name="explore"
@@ -64,13 +93,15 @@ export default function TabLayout() {
           ),
         }}
       />
+
       <Tabs.Screen
-        name="statsScreen"
+        name="statsScreen" 
         options={{
-          title: 'Stats',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'stats-chart' : 'stats-chart-outline'} size={24} color={color} />
+          title: 'Stats', // Le texte qui s'affichera sous l'icône
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="bar-chart" size={28} color={color} /> 
           ),
+          headerTitle: 'Statistiques Détaillées', // Le titre en haut de la page
         }}
       />
     </Tabs>
