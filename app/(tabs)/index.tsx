@@ -16,9 +16,17 @@ interface Mouvement {
   categorie_nom: string;
   sous_categorie_nom: string;
 }
+interface SectionHeader {
+  isHeader: true;
+  title: string;
+  id: string; // Pour le keyExtractor
+}
+
+// Le type de données que notre liste va manipuler
+type ListItem = Mouvement | SectionHeader;
 
 export default function HomeScreen() {
-  const [mouvements, setMouvements] = useState<Mouvement[]>([]);
+  const [mouvements, setMouvements] = useState<ListItem[]>([]);
   const [soldeReel, setSoldeReel] = useState(0);
   const [soldePrev, setSoldePrev] = useState(0);
   // États pour la navigation temporelle
@@ -68,43 +76,96 @@ export default function HomeScreen() {
 
     try {
       const data = await db.getAllAsync(query, params) as Mouvement[];
-      
-      // Calcul des soldes sur les données brutes
       calculerSoldes(data);
 
-      // Tri des données
-      let dataTriee = [...data];
+      // --- TRI OBLIGATOIRE ---
+      // Pour que les headers ne se répètent pas, il FAUT que les données soient groupées
+      // --- TRI AMÉLIORÉ ---
+      // --- TRI AMÉLIORÉ (Type > Catégorie > Sous-Catégorie) ---
+      let dataTriee = [...data].sort((a, b) => {
+        if (triParType) {
+          return a.type.localeCompare(b.type);
+        }
+        
+        if (triParCategorie) {
+          // 1. On trie par Type (Entrée vs Sortie)
+          if (a.type !== b.type) return a.type.localeCompare(b.type);
+          
+          // 2. On trie par Catégorie
+          const catA = (a.categorie_nom || "Z-SANS CAT").toLowerCase();
+          const catB = (b.categorie_nom || "Z-SANS CAT").toLowerCase();
+          if (catA !== catB) return catA.localeCompare(catB);
+          
+          // 3. ON AJOUTE LE TRI PAR SOUS-CATÉGORIE
+          const subA = (a.sous_categorie_nom || "").toLowerCase();
+          const subB = (b.sous_categorie_nom || "").toLowerCase();
+          return subA.localeCompare(subB);
+        }
+        
+        return 0; 
+      });
 
-      if (triParCategorie || triParType) {
-        dataTriee.sort((a, b) => {
-          // 1. Tri par Type (Entrée avant Sortie)
-          if (triParType) {
-            if (a.type === 'Entrée' && b.type === 'Sortie') return -1;
-            if (a.type === 'Sortie' && b.type === 'Entrée') return 1;
-          }
+      // --- GÉNÉRATION DES HEADERS ---
+      let finalData: ListItem[] = [];
+      let lastHeader = "";
 
-          // 2. Tri par Catégorie
-          if (triParCategorie) {
-            const catA = (a.categorie_nom || "Sans catégorie").toLowerCase();
-            const catB = (b.categorie_nom || "Sans catégorie").toLowerCase();
-            
-            if (catA !== catB) return catA.localeCompare(catB);
+      dataTriee.forEach((item, index) => {
+        let currentHeader = "";
+        
+        if (triParType) {
+          currentHeader = item.type.toUpperCase();
+        } else if (triParCategorie) {
+          // On crée un header plus précis : TYPE > CATÉGORIE > SOUS-CATÉGORIE
+          const cat = (item.categorie_nom || "SANS CATÉGORIE").toUpperCase();
+          const sub = item.sous_categorie_nom ? ` > ${item.sous_categorie_nom.toUpperCase()}` : "";
+          currentHeader = `${item.type.toUpperCase()} : ${cat}${sub}`;
+        }
 
-            // Si même catégorie, tri par sous-catégorie
-            const subA = (a.sous_categorie_nom || "").toLowerCase();
-            const subB = (b.sous_categorie_nom || "").toLowerCase();
-            return subA.localeCompare(subB);
-          }
-          return 0;
-        });
-      }
+        if (currentHeader !== "" && currentHeader !== lastHeader) {
+          finalData.push({ 
+            isHeader: true, 
+            title: currentHeader, 
+            id: `header-${currentHeader}-${index}` 
+          } as SectionHeader);
+          lastHeader = currentHeader;
+        }
+        
+        finalData.push(item);
+      });
 
-      // MISE À JOUR DU STATE (Vérifie bien que cette ligne est DANS loadData)
-      setMouvements(dataTriee);
+      setMouvements(finalData);
 
     } catch (error) {
       console.error("Erreur SQL loadData:", error);
     }
+  };
+
+  const handleResetDatabase = () => {
+    Alert.alert(
+      "⚠️ Nettoyage complet",
+      "Voulez-vous vraiment supprimer TOUTES vos opérations ? Cette action est irréversible.",
+      [
+        { text: "Annuler", style: "cancel" },
+        { 
+          text: "Tout effacer", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              // On vide uniquement la table des mouvements pour garder tes catégories intactes
+              await db.execAsync('DELETE FROM mouvements');
+              // On réinitialise le compteur d'ID pour repartir de 1
+              await db.execAsync("DELETE FROM sqlite_sequence WHERE name='mouvements'");
+              
+              Alert.alert("Succès", "La base de données a été vidée.");
+              loadData(); // On rafraîchit l'écran
+            } catch (error) {
+              console.error("Erreur reset:", error);
+              Alert.alert("Erreur", "Impossible de vider la base.");
+            }
+          } 
+        }
+      ]
+    );
   };
 
   const calculerSoldes = (data: Mouvement[]) => {
@@ -198,6 +259,10 @@ export default function HomeScreen() {
         {/* Affichage des soldes */}
         
         <View style={styles.headerNav}>
+          {/* Bouton de Reset à gauche */}
+          <TouchableOpacity onPress={handleResetDatabase} style={styles.resetBtn}>
+            <Text style={{ fontSize: 18 }}>🗑️</Text>
+          </TouchableOpacity>
           {/* Bouton pour basculer Mois / Année */}
           <TouchableOpacity onPress={() => setViewMode(viewMode === 'mensuel' ? 'annuel' : 'mensuel')} style={styles.modeToggle}>
             <Text style={styles.modeToggleText}>{viewMode === 'mensuel' ? 'MOIS' : 'ANNÉE'}</Text>
@@ -231,7 +296,11 @@ export default function HomeScreen() {
           {/* Tri par Type */}
           <TouchableOpacity 
             style={styles.filterItem} 
-            onPress={() => setTriParType(!triParType)}
+            onPress={() => {
+              const nouveauTriType = !triParType;
+              setTriParType(nouveauTriType);
+              if (nouveauTriType) setTriParCategorie(false); // Désactive la catégorie si on active le type
+            }}
           >
             <View style={[styles.checkbox, triParType && styles.checkboxActive]}>
               {triParType && <Text style={styles.checkmark}>✓</Text>}
@@ -239,10 +308,16 @@ export default function HomeScreen() {
             <Text style={styles.filterLabel}>Par Type</Text>
           </TouchableOpacity>
 
+          <View style={{ width: 20 }} /> {/* Petit espace entre les deux */}
+
           {/* Tri par Catégorie */}
           <TouchableOpacity 
             style={styles.filterItem} 
-            onPress={() => setTriParCategorie(!triParCategorie)}
+            onPress={() => {
+              const nouveauTriCat = !triParCategorie;
+              setTriParCategorie(nouveauTriCat);
+              if (nouveauTriCat) setTriParType(false); // Désactive le type si on active la catégorie
+            }}
           >
             <View style={[styles.checkbox, triParCategorie && styles.checkboxActive]}>
               {triParCategorie && <Text style={styles.checkmark}>✓</Text>}
@@ -252,42 +327,50 @@ export default function HomeScreen() {
         </View>
         <FlatList
           data={mouvements}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item) => item.id.toString()} // .toString() règle le problème ts(2322)
           refreshing={refreshing} // État du chargement
           onRefresh={onRefresh}   // Fonction déclenchée au tirage
-          renderItem={({ item }) => (
-            <Swipeable renderRightActions={() => renderRightActions(item.id)} overshootRight={false}>
-              <TouchableOpacity 
-                activeOpacity={0.7}
-                style={[styles.card, item.etat === 'Encaissé' ? styles.cardEncaissee : styles.cardAttente]}
-                onPress={() => openPointerModal(item)}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  {/* ICÔNE DYNAMIQUE SELON LE TYPE */}
-                  <Text style={{ fontSize: 20, marginRight: 12 }}>
-                    {item.type === 'Sortie' ? '💸' : '💰'}
-                  </Text>
-                  
-                  <View>
-                    <Text style={styles.nom}>{item.nom}</Text>
-                    <Text style={styles.date}>
-                      {item.date} 
-                      {item.categorie_nom ? ` • ${item.categorie_nom}` : ''}
-                      {item.sous_categorie_nom ? ` > ${item.sous_categorie_nom}` : ''}
+          renderItem={({ item }) => {
+            // SI C'EST UN HEADER
+            if ('isHeader' in item && item.isHeader) {
+              return (
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionHeaderText}>{item.title}</Text>
+                </View>
+              );
+            }
+
+            // SI C'EST UN MOUVEMENT (ton code habituel)
+            const mouvement = item as Mouvement;
+            return (
+              <Swipeable renderRightActions={() => renderRightActions(Number(mouvement.id))} overshootRight={false}>
+                <TouchableOpacity 
+                  activeOpacity={0.7}
+                  style={[styles.card, mouvement.etat === 'Encaissé' ? styles.cardEncaissee : styles.cardAttente]}
+                  onPress={() => openPointerModal(mouvement)}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 20, marginRight: 12 }}>
+                      {mouvement.type === 'Sortie' ? '💸' : '💰'}
+                    </Text>
+                    <View>
+                      <Text style={styles.nom}>{mouvement.nom}</Text>
+                      <Text style={styles.date}>
+                        {mouvement.date} 
+                        {mouvement.categorie_nom && !triParCategorie ? ` • ${mouvement.categorie_nom}` : ''}
+                        {mouvement.sous_categorie_nom ? ` > ${mouvement.sous_categorie_nom}` : ''}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={[styles.valeurItem, { color: mouvement.type === 'Sortie' ? '#e74c3c' : '#2ecc71' }]}>
+                      {mouvement.type === 'Sortie' ? '-' : '+'} {mouvement.etat === 'Encaissé' ? mouvement.valeur.toFixed(2) : mouvement.valeur_previsionnelle.toFixed(2)} €
                     </Text>
                   </View>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={[styles.valeurItem, { color: item.type === 'Sortie' ? '#e74c3c' : '#2ecc71' }]}>
-                    {item.type === 'Sortie' ? '-' : '+'} {item.etat === 'Encaissé' ? item.valeur.toFixed(2) : item.valeur_previsionnelle.toFixed(2)} €
-                  </Text>
-                  <View style={[styles.badge, item.etat === 'Encaissé' ? styles.badgeGreen : styles.badgeOrange]}>
-                    <Text style={styles.badgeText}>{item.etat}</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            </Swipeable>
-          )}
+                </TouchableOpacity>
+              </Swipeable>
+            );
+          }}
           contentContainerStyle={{ paddingHorizontal: 20 }}
         />
 
@@ -435,5 +518,27 @@ const styles = StyleSheet.create({
   filterItem: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  sectionHeader: {
+    backgroundColor: '#f8f9fa',
+    paddingVertical: 8,
+    paddingHorizontal: 5,
+    marginTop: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  sectionHeaderText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#7f8c8d',
+    letterSpacing: 1,
+  },
+  resetBtn: {
+    padding: 8,
+    marginRight: 10,
+    backgroundColor: '#fff1f0', // Un rouge très léger
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ffa39e',
   },
 });

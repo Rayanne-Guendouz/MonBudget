@@ -125,3 +125,20 @@ export const deleteMouvement = async (id) => {
   }
 };
 
+export const resetDatabase = async () => {
+  try {
+    // L'ordre est important à cause des clés étrangères
+    await db.execAsync('DELETE FROM mouvements');
+    await db.execAsync('DELETE FROM sous_categories');
+    // On peut choisir de garder ou non les catégories de base
+    // await db.execAsync('DELETE FROM categories'); 
+    
+    // Optionnel : Réinitialiser les compteurs d'ID à 1
+    await db.execAsync("DELETE FROM sqlite_sequence WHERE name='mouvements'");
+    
+    console.log("Base de données vidée avec succès");
+  } catch (error) {
+    console.error("Erreur lors du nettoyage :", error);
+  }
+};
+
