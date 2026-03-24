@@ -97,6 +97,45 @@ export default function AddScreen() {
     router.replace('/'); 
   };
 
+  const handleDeleteSousCat = async () => {
+    if (!selectedSousCat) {
+      Alert.alert("Info", "Sélectionnez une sous-catégorie à supprimer.");
+      return;
+    }
+
+    const sousCatASupprimer = sousCategories.find(sc => sc.id.toString() === selectedSousCat);
+
+    Alert.alert(
+      "Supprimer",
+      `Voulez-vous vraiment supprimer "${sousCatASupprimer?.nom}" ?`,
+      [
+        { text: "Annuler", style: "cancel" },
+        { 
+          text: "Supprimer", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              await db.runAsync('DELETE FROM sous_categories WHERE id = ?', [parseInt(selectedSousCat)]);
+              
+              // Recharger la liste
+              const data = await getSousCategories(parseInt(selectedCat));
+              setSousCategories(data);
+              
+              // Sélectionner la première si elle existe, sinon vide
+              if (data.length > 0) setSelectedSousCat(data[0].id.toString());
+              else setSelectedSousCat('');
+              
+              Alert.alert("Succès", "Sous-catégorie supprimée.");
+            } catch (e) {
+              console.error(e);
+              Alert.alert("Erreur", "Impossible de supprimer.");
+            }
+          } 
+        }
+      ]
+    );
+  };
+
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.title}>Nouvelle Opération</Text>
@@ -149,6 +188,18 @@ export default function AddScreen() {
             )}
           </Picker>
         </View>
+
+        {/* Bouton Supprimer (uniquement si une sous-cat existe) */}
+        {selectedSousCat !== '' && (
+          <TouchableOpacity 
+            style={[styles.addButtonSmall, { backgroundColor: '#e74c3c' }]} 
+            onPress={handleDeleteSousCat}
+          >
+            <Text style={styles.addButtonText}>🗑️</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Bouton Ajouter */}
         <TouchableOpacity 
           style={styles.addButtonSmall} 
           onPress={() => setModalSousCatVisible(true)}
