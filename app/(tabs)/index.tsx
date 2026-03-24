@@ -1,7 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, SafeAreaView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, FlatList, StyleSheet, SafeAreaView, TouchableOpacity, Alert, Modal, TextInput, Pressable } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-// BIEN VÉRIFIER CES IMPORTS
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 import db from '../../database';
 import { deleteMouvement, pointerMouvement } from '@/services/budgetService';
@@ -10,9 +9,9 @@ interface Mouvement {
   id: number;
   nom: string;
   date: string;
+  type: 'Entrée' | 'Sortie';
   valeur: number;
   valeur_previsionnelle: number;
-  type: 'Entrée' | 'Sortie';
   etat: 'Encaissé' | 'En attente';
 }
 
@@ -21,24 +20,25 @@ export default function HomeScreen() {
   const [soldeReel, setSoldeReel] = useState(0);
   const [soldePrev, setSoldePrev] = useState(0);
 
+  // États pour la Modale de pointage
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<Mouvement | null>(null);
+  const [montantSaisi, setMontantSaisi] = useState('');
+
   const loadData = async () => {
-    try {
-      const data = await db.getAllAsync('SELECT * FROM mouvements ORDER BY date DESC;') as Mouvement[];
-      setMouvements(data);
-      calculerSoldes(data);
-    } catch (e) {
-      console.error(e);
-    }
+    const data = await db.getAllAsync('SELECT * FROM mouvements ORDER BY date DESC;') as Mouvement[];
+    setMouvements(data);
+    calculerSoldes(data);
   };
 
   const calculerSoldes = (data: Mouvement[]) => {
     let reel = 0;
     let attentePrev = 0;
     data.forEach((m) => {
-      const montantReel = m.type === 'Sortie' ? -m.valeur : m.valeur;
-      const montantPrev = m.type === 'Sortie' ? -m.valeur_previsionnelle : m.valeur_previsionnelle;
-      if (m.etat === 'Encaissé') reel += montantReel;
-      else attentePrev += montantPrev;
+      const mR = m.type === 'Sortie' ? -m.valeur : m.valeur;
+      const mP = m.type === 'Sortie' ? -m.valeur_previsionnelle : m.valeur_previsionnelle;
+      if (m.etat === 'Encaissé') reel += mR;
+      else attentePrev += mP;
     });
     setSoldeReel(reel);
     setSoldePrev(reel + attentePrev);
@@ -46,73 +46,46 @@ export default function HomeScreen() {
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
-  const confirmDelete = (id: number) => {
-    Alert.alert("Supprimer", "Voulez-vous supprimer définitivement ce mouvement ?", [
-      { text: "Annuler", style: "cancel" },
-      { 
-        text: "Supprimer", 
-        style: "destructive", 
-        onPress: async () => {
-          await deleteMouvement(id);
-          loadData();
-        } 
-      }
-    ]);
+  // Ouvrir la modale de pointage
+  const openPointerModal = (item: Mouvement) => {
+    if (item.etat === 'Encaissé') return;
+    setSelectedItem(item);
+    setMontantSaisi(item.valeur_previsionnelle.toString()); // Pré-remplissage
+    setModalVisible(true);
   };
 
-  // Ajout de la fonction de rendu des actions à droite (Swipe)
+  // Valider le pointage
+  const validerPointage = async () => {
+    if (!selectedItem) return;
+    const valeurFinale = parseFloat(montantSaisi.replace(',', '.'));
+    
+    if (isNaN(valeurFinale)) {
+      Alert.alert("Erreur", "Nombre invalide");
+      return;
+    }
+
+    await pointerMouvement(selectedItem.id, valeurFinale);
+    setModalVisible(false);
+    loadData();
+  };
+
   const renderRightActions = (id: number) => (
-    <TouchableOpacity 
-      style={styles.deleteButton} 
-      onPress={() => confirmDelete(id)}
-      activeOpacity={0.6}
-    >
+    <TouchableOpacity style={styles.deleteButton} onPress={() => {
+      Alert.alert("Supprimer", "Confirmer ?", [
+        { text: "Non" },
+        { text: "Oui", style: 'destructive', onPress: async () => { await deleteMouvement(id); loadData(); }}
+      ]);
+    }}>
       <Text style={styles.deleteText}>🗑️ Effacer</Text>
     </TouchableOpacity>
-  );
-
-  const renderItem = ({ item }: { item: Mouvement }) => (
-    <Swipeable
-      renderRightActions={() => renderRightActions(item.id)}
-      overshootRight={false} // Empêche de glisser trop loin à droite
-      friction={2}
-    >
-      <TouchableOpacity 
-        activeOpacity={1} // Changé à 1 pour ne pas clignoter pendant le swipe
-        style={[styles.card, item.etat === 'Encaissé' ? styles.cardEncaissee : styles.cardAttente]}
-        onPress={() => {
-            if (item.etat === 'En attente') {
-                Alert.alert("Encaisser", `Passer "${item.nom}" en encaissé ?`, [
-                    { text: "Annuler", style: "cancel" },
-                    { text: "Confirmer", onPress: async () => {
-                        await pointerMouvement(item.id, item.valeur_previsionnelle);
-                        loadData();
-                    }}
-                ]);
-            }
-        }}
-      >
-        <View>
-          <Text style={styles.nom}>{item.nom}</Text>
-          <Text style={styles.date}>{item.date}</Text>
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={[styles.valeurItem, { color: item.type === 'Sortie' ? '#e74c3c' : '#2ecc71' }]}>
-            {item.type === 'Sortie' ? '-' : '+'} {item.etat === 'Encaissé' ? item.valeur.toFixed(2) : item.valeur_previsionnelle.toFixed(2)} €
-          </Text>
-          <View style={[styles.badge, item.etat === 'Encaissé' ? styles.badgeGreen : styles.badgeOrange]}>
-            <Text style={styles.badgeText}>{item.etat}</Text>
-          </View>
-        </View>
-      </TouchableOpacity>
-    </Swipeable>
   );
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.container}>
+        {/* Affichage des soldes */}
         <View style={styles.summaryContainer}>
-           <View style={styles.soldeBox}>
+          <View style={styles.soldeBox}>
             <Text style={styles.soldeLabel}>SOLDE RÉEL</Text>
             <Text style={[styles.soldeValeur, { color: soldeReel >= 0 ? '#2ecc71' : '#e74c3c' }]}>{soldeReel.toFixed(2)} €</Text>
           </View>
@@ -125,9 +98,60 @@ export default function HomeScreen() {
         <FlatList
           data={mouvements}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={renderItem}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }} // Ajout de padding en bas
+          renderItem={({ item }) => (
+            <Swipeable renderRightActions={() => renderRightActions(item.id)} overshootRight={false}>
+              <TouchableOpacity 
+                activeOpacity={0.7}
+                style={[styles.card, item.etat === 'Encaissé' ? styles.cardEncaissee : styles.cardAttente]}
+                onPress={() => openPointerModal(item)}
+              >
+                <View>
+                  <Text style={styles.nom}>{item.nom}</Text>
+                  <Text style={styles.date}>{item.date}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[styles.valeurItem, { color: item.type === 'Sortie' ? '#e74c3c' : '#2ecc71' }]}>
+                    {item.type === 'Sortie' ? '-' : '+'} {item.etat === 'Encaissé' ? item.valeur.toFixed(2) : item.valeur_previsionnelle.toFixed(2)} €
+                  </Text>
+                  <View style={[styles.badge, item.etat === 'Encaissé' ? styles.badgeGreen : styles.badgeOrange]}>
+                    <Text style={styles.badgeText}>{item.etat}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            </Swipeable>
+          )}
+          contentContainerStyle={{ paddingHorizontal: 20 }}
         />
+
+        {/* MODALE DE POINTAGE COMPATIBLE ANDROID */}
+        <Modal transparent visible={modalVisible} animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Encaisser l&apos;opération</Text>
+              <Text style={styles.modalSub}>{selectedItem?.nom}</Text>
+              
+              <Text style={styles.label}>Montant Réel Final (€) :</Text>
+              <TextInput 
+                style={styles.modalInput}
+                value={montantSaisi}
+                onChangeText={setMontantSaisi}
+                keyboardType="numeric"
+                selectTextOnFocus
+                autoFocus
+              />
+
+              <View style={styles.modalButtons}>
+                <Pressable style={[styles.btn, styles.btnCancel]} onPress={() => setModalVisible(false)}>
+                  <Text style={styles.btnText}>Annuler</Text>
+                </Pressable>
+                <Pressable style={[styles.btn, styles.btnConfirm]} onPress={validerPointage}>
+                  <Text style={styles.btnTextConfirm}>Encaisser</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
       </SafeAreaView>
     </GestureHandlerRootView>
   );
@@ -140,16 +164,8 @@ const styles = StyleSheet.create({
   borderLeft: { borderLeftWidth: 1, borderLeftColor: '#eee' },
   soldeLabel: { fontSize: 10, color: '#95a5a6', fontWeight: 'bold' },
   soldeValeur: { fontSize: 18, fontWeight: 'bold' },
-  card: { 
-    backgroundColor: '#fff', 
-    padding: 15, 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    borderLeftWidth: 5, 
-    height: 70, // Fixer une hauteur aide le Swipeable à s'aligner
-    marginBottom: 1 
-  },
-  cardEncaissee: { borderLeftColor: '#2ecc71', opacity: 0.8 },
+  card: { backgroundColor: '#fff', padding: 15, flexDirection: 'row', justifyContent: 'space-between', borderLeftWidth: 5, marginBottom: 1, height: 70 },
+  cardEncaissee: { borderLeftColor: '#2ecc71', opacity: 0.6 },
   cardAttente: { borderLeftColor: '#f39c12' },
   nom: { fontSize: 15, fontWeight: '600' },
   date: { fontSize: 12, color: '#bdc3c7' },
@@ -158,13 +174,20 @@ const styles = StyleSheet.create({
   badgeGreen: { backgroundColor: '#def7ec' },
   badgeOrange: { backgroundColor: '#fef3c7' },
   badgeText: { fontSize: 9, fontWeight: 'bold', color: '#333' },
-  deleteButton: { 
-    backgroundColor: '#e74c3c', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    width: 100, 
-    height: 70, // Doit être identique à la hauteur de la card
-    marginBottom: 1 
-  },
-  deleteText: { color: '#fff', fontWeight: 'bold' }
+  deleteButton: { backgroundColor: '#e74c3c', justifyContent: 'center', alignItems: 'center', width: 100, height: 70 },
+  deleteText: { color: '#fff', fontWeight: 'bold' },
+  
+  // STYLES DE LA MODALE
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { backgroundColor: '#fff', width: '85%', borderRadius: 20, padding: 25, elevation: 10 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', textAlign: 'center' },
+  modalSub: { textAlign: 'center', color: '#7f8c8d', marginBottom: 20 },
+  label: { fontSize: 12, color: '#95a5a6', marginBottom: 5 },
+  modalInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 10, padding: 12, fontSize: 20, textAlign: 'center', marginBottom: 20 },
+  modalButtons: { flexDirection: 'row', justifyContent: 'space-between' },
+  btn: { flex: 1, padding: 15, borderRadius: 10, alignItems: 'center' },
+  btnCancel: { backgroundColor: '#f1f2f6', marginRight: 10 },
+  btnConfirm: { backgroundColor: '#2ecc71' },
+  btnText: { fontWeight: 'bold', color: '#7f8c8d' },
+  btnTextConfirm: { fontWeight: 'bold', color: '#fff' }
 });
