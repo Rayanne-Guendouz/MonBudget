@@ -42,6 +42,36 @@ export default function HomeScreen() {
 
   const [triParType, setTriParType] = useState(false);
   const [triParCategorie, setTriParCategorie] = useState(false);
+  const [isFirstRun, setIsFirstRun] = useState(false);
+  const [initialBalance, setInitialBalance] = useState('');
+
+  // À appeler dans ton useEffect de chargement
+  const checkFirstRun = async () => {
+    const result = await db.getAllAsync("SELECT COUNT(*) as count FROM mouvements") as any[];
+    if (result[0].count === 0) {
+      setIsFirstRun(true);
+    } else {
+      setIsFirstRun(false);
+    }
+  };
+
+  const saveInitialBalance = async () => {
+    const montant = parseFloat(initialBalance.replace(',', '.'));
+    if (isNaN(montant)) return;
+
+    try {
+      await db.runAsync(
+        `INSERT INTO mouvements (nom, date, valeur, valeur_previsionnelle, type, etat, categorie_id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ["Solde Initial", new Date().toISOString().split('T')[0], montant, montant, "Entrée", "Encaissé", 1] 
+        // Note: Assure-toi que la catégorie ID 1 existe (ex: "Revenus" ou "Initial")
+      );
+      setIsFirstRun(false);
+      loadData(); // Recharge ta liste de mouvements
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -200,9 +230,9 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => { 
+      checkFirstRun(); // <--- AJOUTE CETTE LIGNE ICI
       loadData(); 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentDate, viewMode,triParType,triParCategorie])
+    }, [currentDate, viewMode, triParType, triParCategorie])
   );
 
   // Ouvrir la modale de pointage
@@ -252,6 +282,37 @@ export default function HomeScreen() {
       <Text style={styles.deleteText}>🗑️ Effacer</Text>
     </TouchableOpacity>
   );
+
+  const renderHeader = () => {
+    if (!isFirstRun) return null;
+
+    return (
+      <View style={styles.welcomeCard}>
+        <Text style={styles.welcomeTitle}>Bienvenue ! 👋</Text>
+        <Text style={styles.welcomeSub}>Quel est le solde actuel de votre compte ?</Text>
+        
+        <TextInput
+          style={styles.initialInput}
+          placeholder="Ex: 1500.00 ou -50.00"
+          // CHANGE ICI : decimal-pad permet le point et parfois le moins selon l'OS
+          keyboardType="numbers-and-punctuation" 
+          value={initialBalance}
+          // Pas de changement ici, mais assure-toi que l'état initialBalance 
+          // est bien défini au top de ton composant HomeScreen
+          onChangeText={(text) => setInitialBalance(text)}
+          placeholderTextColor="#95a5a6"
+        />
+        
+        <TouchableOpacity 
+          style={styles.welcomeBtn} 
+          onPress={saveInitialBalance}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.welcomeBtnText}>Définir mon solde de départ</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -325,6 +386,22 @@ export default function HomeScreen() {
           keyExtractor={(item) => item.id.toString()} // .toString() règle le problème ts(2322)
           refreshing={refreshing} // État du chargement
           onRefresh={onRefresh}   // Fonction déclenchée au tirage
+          ListHeaderComponent={
+            isFirstRun ? (
+              <View style={styles.welcomeCard}>
+                <Text style={styles.welcomeTitle}>Bienvenue ! 👋</Text>
+                <TextInput
+                  style={styles.initialInput}
+                  keyboardType="numbers-and-punctuation"
+                  value={initialBalance}
+                  onChangeText={setInitialBalance}
+                />
+                <TouchableOpacity style={styles.welcomeBtn} onPress={saveInitialBalance}>
+                  <Text style={styles.welcomeBtnText}>Valider</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null
+          }
           renderItem={({ item }) => {
             if ('isHeader' in item && item.isHeader) {
               return (
@@ -532,5 +609,40 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#ffa39e',
-  }
+  },
+  welcomeCard: {
+    backgroundColor: '#3498db',
+    marginHorizontal: 20,
+    marginTop: 15,
+    marginBottom: 5,
+    padding: 20,
+    borderRadius: 15,
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  welcomeTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+  welcomeSub: { color: '#fff', fontSize: 13, textAlign: 'center', marginTop: 5, opacity: 0.9 },
+  initialInput: {
+    backgroundColor: '#fff',
+    width: '100%',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 15,
+    fontSize: 18,
+    textAlign: 'center',
+    color: '#2c3e50',
+  },
+  welcomeBtn: {
+    backgroundColor: '#2ecc71',
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 15,
+    width: '100%',
+    alignItems: 'center',
+  },
+  welcomeBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
 });
