@@ -1,16 +1,18 @@
 import db from '../database';
 
 // --- FONCTION POUR AJOUTER UNE SOUS-CATÉGORIE ---
+export const getSousCategories = async (categorieId) => {
+  return await db.getAllAsync(
+    'SELECT * FROM sous_categories WHERE categorie_id = ? ORDER BY nom ASC;',
+    [categorieId]
+  );
+};
+
 export const addSousCategorie = async (nom, categorieId) => {
-  try {
-    const result = await db.runAsync(
-      'INSERT INTO sous_categories (nom, categorie_id) VALUES (?, ?);',
-      [nom, categorieId]
-    );
-    return result.lastInsertRowId; // Retourne l'ID créé
-  } catch (error) {
-    console.error("Erreur ajout sous-catégorie:", error);
-  }
+  return await db.runAsync(
+    'INSERT INTO sous_categories (nom, categorie_id) VALUES (?, ?);',
+    [nom, categorieId]
+  );
 };
 
 // --- FONCTION POUR AJOUTER UN MOUVEMENT (Ton schéma complet) ---
@@ -122,3 +124,4 @@ export const deleteMouvement = async (id) => {
     console.error("Erreur lors de la suppression:", error);
   }
 };
+

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, Modal } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import db from '../../database';
-import { addMouvementEtRecurrence, getCategories, getFrequences } from '../../services/budgetService';
+import { addMouvementEtRecurrence, addSousCategorie, getCategories, getFrequences, getSousCategories } from '../../services/budgetService';
 
 export default function AddScreen() {
   const router = useRouter();
@@ -19,6 +19,10 @@ export default function AddScreen() {
   const [selectedCat, setSelectedCat] = useState('');
   const [frequences, setFrequences] = useState<any[]>([]);
   const [selectedFreq, setSelectedFreq] = useState('');
+  const [sousCategories, setSousCategories] = useState<any[]>([]);
+  const [selectedSousCat, setSelectedSousCat] = useState('');
+  const [modalSousCatVisible, setModalSousCatVisible] = useState(false);
+  const [nouveauNomSousCat, setNouveauNomSousCat] = useState('');
 
   useEffect(() => {
     const loadData = async () => {
@@ -30,7 +34,39 @@ export default function AddScreen() {
       if (freqs.length > 0) setSelectedFreq(freqs[0].id.toString());
     };
     loadData();
+    
   }, []);
+
+  useEffect(() => {
+    const loadSousCats = async () => {
+      if (selectedCat) {
+        const data = await getSousCategories(parseInt(selectedCat));
+        setSousCategories(data);
+        if (data.length > 0) setSelectedSousCat(data[0].id.toString());
+        else setSelectedSousCat('');
+      }
+    };
+    loadSousCats();
+  }, [selectedCat]);
+
+  useEffect(() => {
+    // On récupère le label de la fréquence actuelle
+    const freqSelectionnee = frequences.find(f => f.id.toString() === selectedFreq);
+    
+    // Si c'est "Ponctuel" (ou "Ponctuelle"), on force le Nb de fois à 1
+    if (freqSelectionnee?.nom.toLowerCase().includes('ponctuel')) {
+      setNbOccurrences('1');
+    }
+  }, [selectedFreq, frequences]);
+
+  const handleAddSousCat = async () => {
+    if (!nouveauNomSousCat || !selectedCat) return;
+    await addSousCategorie(nouveauNomSousCat, parseInt(selectedCat));
+    const data = await getSousCategories(parseInt(selectedCat)); // Recharger
+    setSousCategories(data);
+    setNouveauNomSousCat('');
+    setModalSousCatVisible(false);
+  };
 
   const handleSave = async () => {
     if (!nom || (!valeur && !valeurPrev)) {
@@ -98,6 +134,53 @@ export default function AddScreen() {
         </Picker>
       </View>
 
+      <Text style={styles.label}>Sous-Catégorie</Text>
+      <View style={styles.rowInline}>
+        <View style={[styles.pickerContainer, { flex: 1 }]}>
+          <Picker 
+            selectedValue={selectedSousCat} 
+            onValueChange={(v) => setSelectedSousCat(v)}
+            enabled={sousCategories.length > 0}
+          >
+            {sousCategories.length > 0 ? (
+              sousCategories.map(sc => <Picker.Item key={sc.id} label={sc.nom} value={sc.id.toString()} />)
+            ) : (
+              <Picker.Item label="Aucune sous-caté." value="" />
+            )}
+          </Picker>
+        </View>
+        <TouchableOpacity 
+          style={styles.addButtonSmall} 
+          onPress={() => setModalSousCatVisible(true)}
+        >
+          <Text style={styles.addButtonText}>+</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* MODALE AJOUT SOUS-CATÉGORIE */}
+      <Modal visible={modalSousCatVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Nouvelle Sous-Catégorie</Text>
+            <TextInput 
+              style={styles.input} 
+              placeholder="Nom (ex: Essence, Netflix...)" 
+              value={nouveauNomSousCat}
+              onChangeText={setNouveauNomSousCat}
+              autoFocus
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.btnCancel} onPress={() => setModalSousCatVisible(false)}>
+                <Text>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.btnConfirm} onPress={handleAddSousCat}>
+                <Text style={{ color: '#fff' }}>Créer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* --- NOUVELLE SECTION RÉCURRENCE --- */}
       <View style={styles.divider} />
       <Text style={styles.sectionTitle}>Récurrence (Paiement en plusieurs fois)</Text>
@@ -114,11 +197,18 @@ export default function AddScreen() {
         <View style={{ flex: 1 }}>
           <Text style={styles.label}>Nb de fois</Text>
           <TextInput 
-            style={styles.input} 
+            style={[
+              styles.input, 
+              // On grise le champ si c'est Ponctuel
+              (frequences.find(f => f.id.toString() === selectedFreq)?.nom.toLowerCase().includes('ponctuel')) 
+              && { backgroundColor: '#f1f2f6', color: '#bdc3c7' }
+            ]} 
             value={nbOccurrences} 
             onChangeText={setNbOccurrences} 
             keyboardType="numeric" 
             placeholder="1"
+            // Désactive la saisie si Ponctuel
+            editable={!(frequences.find(f => f.id.toString() === selectedFreq)?.nom.toLowerCase().includes('ponctuel'))}
           />
         </View>
       </View>
@@ -144,5 +234,48 @@ const styles = StyleSheet.create({
   pickerContainer: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, marginBottom: 5 },
   divider: { height: 1, backgroundColor: '#eee', marginVertical: 20 },
   button: { backgroundColor: '#3498db', padding: 15, borderRadius: 10, marginTop: 30, alignItems: 'center' },
-  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
+  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  rowInline: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 10 
+  },
+  addButtonSmall: { 
+    backgroundColor: '#3498db', 
+    width: 50, 
+    height: 50, 
+    borderRadius: 8, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  addButtonText: { 
+    color: '#fff', 
+    fontSize: 24, 
+    fontWeight: 'bold' 
+  },
+  modalOverlay: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.5)', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  modalContent: { 
+    backgroundColor: '#fff', 
+    padding: 20, 
+    borderRadius: 15, 
+    width: '80%' 
+  },
+  modalTitle: { 
+    fontSize: 18, 
+    fontWeight: 'bold', 
+    marginBottom: 15 
+  },
+  modalButtons: { 
+    flexDirection: 'row', 
+    justifyContent: 'flex-end', 
+    gap: 15, 
+    marginTop: 20 
+  },
+  btnCancel: { padding: 10 },
+  btnConfirm: { backgroundColor: '#3498db', padding: 10, borderRadius: 5 }
 });

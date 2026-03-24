@@ -14,7 +14,8 @@ export default function RootLayout() {
   // Le composant <Stack /> gère la navigation entre tes pages
   return (
     <Stack>
-      <Stack.Screen name="index" options={{ title: 'Mon Budget' }} />
+      {/* On cible le dossier (tabs) et on cache son header */}
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
     </Stack>
   );
 }
