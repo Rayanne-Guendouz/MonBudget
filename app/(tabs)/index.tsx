@@ -4,6 +4,12 @@ import { useFocusEffect } from 'expo-router';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 import db from '../../database';
 import { deleteMouvement, pointerMouvement } from '@/services/budgetService';
+import * as FileSystem from 'expo-file-system';
+// On importe les constantes individuellement
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+
+
 
 interface Mouvement {
   id: number;
@@ -235,6 +241,75 @@ export default function HomeScreen() {
     }, [currentDate, viewMode, triParType, triParCategorie])
   );
 
+  const exportData = async () => {
+    try {
+      const allData = await db.getAllAsync(`
+        SELECT m.date, m.nom, m.type, m.valeur, m.etat, c.nom as categorie
+        FROM mouvements m
+        LEFT JOIN categories c ON m.categorie_id = c.id
+        ORDER BY m.date DESC
+      `) as any[];
+
+      if (allData.length === 0) {
+        Alert.alert("Info", "Aucune donnée à exporter.");
+        return;
+      }
+
+      // On crée un tableau HTML propre
+      let tableRows = "";
+      allData.forEach(m => {
+        const couleur = m.type === 'Sortie' ? 'red' : 'green';
+        tableRows += `
+          <tr>
+            <td>${m.date}</td>
+            <td>${m.nom}</td>
+            <td>${m.categorie || '-'}</td>
+            <td style="color: ${couleur}; font-weight: bold;">${m.valeur.toFixed(2)} €</td>
+            <td>${m.etat}</td>
+          </tr>
+        `;
+      });
+
+      const htmlContent = `
+        <html>
+          <head>
+            <style>
+              table { width: 100%; border-collapse: collapse; }
+              th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+              th { background-color: #f2f2f2; }
+              h1 { text-align: center; color: #3498db; }
+            </style>
+          </head>
+          <body>
+            <h1>Mon Rapport de Budget</h1>
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th><th>Nom</th><th>Catégorie</th><th>Montant</th><th>État</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tableRows}
+              </tbody>
+            </table>
+          </body>
+        </html>
+      `;
+
+      // Génère un fichier PDF temporaire à partir du HTML
+      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+
+      // Partage le fichier directement
+      await Sharing.shareAsync(uri, {
+        UTI: '.pdf',
+        mimeType: 'application/pdf',
+      });
+
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Erreur", "Impossible de générer le rapport.");
+    }
+  };
   // Ouvrir la modale de pointage
   const openPointerModal = (item: Mouvement) => {
     if (item.etat === 'Encaissé') return;
@@ -319,25 +394,36 @@ export default function HomeScreen() {
       <SafeAreaView style={styles.container}>
         
         <View style={styles.headerNav}>
-          {/* Bouton de Reset à gauche */}
-          <TouchableOpacity onPress={handleResetDatabase} style={styles.resetBtn}><Text style={{ fontSize: 18 }}>🗑️</Text></TouchableOpacity>
-          {/* Bouton pour basculer Mois / Année */}
-          <TouchableOpacity onPress={() => setViewMode(viewMode === 'mensuel' ? 'annuel' : 'mensuel')} style={styles.modeToggle}>
-            <Text style={styles.modeToggleText}>{viewMode === 'mensuel' ? 'MOIS' : 'ANNÉE'}</Text>
-          </TouchableOpacity>
+          {/* Boutons à gauche (Reset + Export) */}
+          <View style={styles.leftActions}>
+            <TouchableOpacity onPress={handleResetDatabase} style={styles.resetBtn}>
+              <Text style={{ fontSize: 16 }}>🗑️</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={exportData} style={styles.exportBtn}>
+              <Text style={{ fontSize: 16 }}>📊</Text>
+            </TouchableOpacity>
+          </View>
 
-          {/* Flèches et Date centrale */}
+          {/* BLOC CENTRAL : Date + Flèches rapprochées */}
           <View style={styles.dateSelector}>
-            <TouchableOpacity onPress={() => changeDate('prev')}>
+            <TouchableOpacity onPress={() => changeDate('prev')} style={styles.arrowHitbox}>
               <Text style={styles.navArrow}>◀</Text>
             </TouchableOpacity>
             
             <Text style={styles.currentDateText}>{formatHeaderDate()}</Text>
             
-            <TouchableOpacity onPress={() => changeDate('next')}>
+            <TouchableOpacity onPress={() => changeDate('next')} style={styles.arrowHitbox}>
               <Text style={styles.navArrow}>▶</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Bouton Mode à droite */}
+          <TouchableOpacity 
+            onPress={() => setViewMode(viewMode === 'mensuel' ? 'annuel' : 'mensuel')} 
+            style={styles.modeToggle}
+          >
+            <Text style={styles.modeToggleText}>{viewMode === 'mensuel' ? 'MOIS' : 'ANNÉE'}</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.summaryContainer}>
@@ -478,6 +564,72 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+
+  headerNav: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: 15, 
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f2f6',
+    zIndex: 10
+  },
+  leftActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 80, // Largeur fixe pour équilibrer avec le bouton de droite
+  },
+  dateSelector: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    flex: 1, // Prend tout l'espace central
+  },
+  currentDateText: { 
+    fontSize: 15, 
+    fontWeight: 'bold', 
+    color: '#2c3e50', 
+    textTransform: 'capitalize',
+    textAlign: 'center',
+    marginHorizontal: 10, // Espace réduit avec les flèches
+    minWidth: 100, // Empêche le saut de texte si le mois est court
+  },
+  navArrow: { 
+    fontSize: 18, 
+    color: '#3498db',
+    fontWeight: 'bold'
+  },
+  arrowHitbox: {
+    padding: 10, // Agrandit la zone cliquable sans changer le design
+  },
+  modeToggle: { 
+    backgroundColor: '#ebf5fb', 
+    paddingHorizontal: 10, 
+    paddingVertical: 5, 
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#3498db',
+    width: 70, // Équilibre avec le bloc de gauche
+    alignItems: 'center'
+  },
+  // On ajuste aussi tes boutons d'actions
+  resetBtn: {
+    padding: 6,
+    marginRight: 5,
+    backgroundColor: '#fff1f0',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ffa39e',
+  },
+  exportBtn: {
+    padding: 6,
+    backgroundColor: '#e8f5e9',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#a5d6a7',
+  },
   container: { flex: 1, backgroundColor: '#f8f9fa' },
   summaryContainer: { flexDirection: 'row', backgroundColor: '#fff', margin: 15, borderRadius: 15, padding: 20, elevation: 3 },
   soldeBox: { flex: 1, alignItems: 'center' },
@@ -496,48 +648,10 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 9, fontWeight: 'bold', color: '#333' },
   deleteButton: { backgroundColor: '#e74c3c', justifyContent: 'center', alignItems: 'center', width: 100, height: 70 },
   deleteText: { color: '#fff', fontWeight: 'bold' },
-  headerNav: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
-    paddingHorizontal: 20, 
-    paddingVertical: 15,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f2f6'
-  },
-  modeToggle: { 
-    backgroundColor: '#ebf5fb', 
-    paddingHorizontal: 12, 
-    paddingVertical: 6, 
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#3498db'
-  },
   modeToggleText: { 
     color: '#3498db', 
     fontSize: 10, 
     fontWeight: 'bold' 
-  },
-  dateSelector: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    flex: 1, 
-    justifyContent: 'flex-end' 
-  },
-  currentDateText: { 
-    fontSize: 16, 
-    fontWeight: 'bold', 
-    color: '#2c3e50', 
-    marginHorizontal: 15,
-    textTransform: 'capitalize', // Pour mettre la première lettre du mois en majuscule
-    minWidth: 120,
-    textAlign: 'center'
-  },
-  navArrow: { 
-    fontSize: 20, 
-    color: '#3498db', 
-    paddingHorizontal: 10 
   },
   
   // STYLES DE LA MODALE
@@ -602,14 +716,6 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     letterSpacing: 1,
   },
-  resetBtn: {
-    padding: 8,
-    marginRight: 10,
-    backgroundColor: '#fff1f0', // Un rouge très léger
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ffa39e',
-  },
   welcomeCard: {
     backgroundColor: '#3498db',
     marginHorizontal: 20,
@@ -645,4 +751,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   welcomeBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+  
 });
