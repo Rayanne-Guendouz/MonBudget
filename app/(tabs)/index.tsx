@@ -19,6 +19,9 @@ export default function HomeScreen() {
   const [mouvements, setMouvements] = useState<Mouvement[]>([]);
   const [soldeReel, setSoldeReel] = useState(0);
   const [soldePrev, setSoldePrev] = useState(0);
+  // États pour la navigation temporelle
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState<'mensuel' | 'annuel'>('mensuel');
 
   // États pour la Modale de pointage
   const [modalVisible, setModalVisible] = useState(false);
@@ -26,7 +29,23 @@ export default function HomeScreen() {
   const [montantSaisi, setMontantSaisi] = useState('');
 
   const loadData = async () => {
-    const data = await db.getAllAsync('SELECT * FROM mouvements ORDER BY date DESC;') as Mouvement[];
+    const year = currentDate.getFullYear();
+    const month = (currentDate.getMonth() + 1).toString().padStart(2, '0');
+    
+    let query = '';
+    let params: any[] = [];
+
+    if (viewMode === 'mensuel') {
+      // Filtre sur le mois précis (ex: 2024-03%)
+      query = "SELECT * FROM mouvements WHERE date LIKE ? ORDER BY date DESC";
+      params = [`${year}-${month}%`];
+    } else {
+      // Filtre sur l'année entière (ex: 2024-%)
+      query = "SELECT * FROM mouvements WHERE date LIKE ? ORDER BY date DESC";
+      params = [`${year}-%`];
+    }
+
+    const data = await db.getAllAsync(query, params) as Mouvement[];
     setMouvements(data);
     calculerSoldes(data);
   };
@@ -44,7 +63,28 @@ export default function HomeScreen() {
     setSoldePrev(reel + attentePrev);
   };
 
-  useFocusEffect(useCallback(() => { loadData(); }, []));
+  const changeDate = (direction: 'next' | 'prev') => {
+  const newDate = new Date(currentDate);
+    if (viewMode === 'mensuel') {
+      newDate.setMonth(currentDate.getMonth() + (direction === 'next' ? 1 : -1));
+    } else {
+      newDate.setFullYear(currentDate.getFullYear() + (direction === 'next' ? 1 : -1));
+    }
+    setCurrentDate(newDate);
+  };
+
+  const formatHeaderDate = () => {
+    if (viewMode === 'mensuel') {
+      return currentDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    }
+    return `Année ${currentDate.getFullYear()}`;
+  };
+
+  useFocusEffect(
+  useCallback(() => { 
+    loadData(); 
+  }, [currentDate, viewMode])
+);
 
   // Ouvrir la modale de pointage
   const openPointerModal = (item: Mouvement) => {
@@ -84,6 +124,27 @@ export default function HomeScreen() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.container}>
         {/* Affichage des soldes */}
+        
+        <View style={styles.headerNav}>
+          {/* Bouton pour basculer Mois / Année */}
+          <TouchableOpacity onPress={() => setViewMode(viewMode === 'mensuel' ? 'annuel' : 'mensuel')} style={styles.modeToggle}>
+            <Text style={styles.modeToggleText}>{viewMode === 'mensuel' ? 'MOIS' : 'ANNÉE'}</Text>
+          </TouchableOpacity>
+
+          {/* Flèches et Date centrale */}
+          <View style={styles.dateSelector}>
+            <TouchableOpacity onPress={() => changeDate('prev')}>
+              <Text style={styles.navArrow}>◀</Text>
+            </TouchableOpacity>
+            
+            <Text style={styles.currentDateText}>{formatHeaderDate()}</Text>
+            
+            <TouchableOpacity onPress={() => changeDate('next')}>
+              <Text style={styles.navArrow}>▶</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <View style={styles.summaryContainer}>
           <View style={styles.soldeBox}>
             <Text style={styles.soldeLabel}>SOLDE RÉEL</Text>
@@ -176,6 +237,49 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 9, fontWeight: 'bold', color: '#333' },
   deleteButton: { backgroundColor: '#e74c3c', justifyContent: 'center', alignItems: 'center', width: 100, height: 70 },
   deleteText: { color: '#fff', fontWeight: 'bold' },
+  headerNav: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: 20, 
+    paddingVertical: 15,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f2f6'
+  },
+  modeToggle: { 
+    backgroundColor: '#ebf5fb', 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#3498db'
+  },
+  modeToggleText: { 
+    color: '#3498db', 
+    fontSize: 10, 
+    fontWeight: 'bold' 
+  },
+  dateSelector: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    flex: 1, 
+    justifyContent: 'flex-end' 
+  },
+  currentDateText: { 
+    fontSize: 16, 
+    fontWeight: 'bold', 
+    color: '#2c3e50', 
+    marginHorizontal: 15,
+    textTransform: 'capitalize', // Pour mettre la première lettre du mois en majuscule
+    minWidth: 120,
+    textAlign: 'center'
+  },
+  navArrow: { 
+    fontSize: 20, 
+    color: '#3498db', 
+    paddingHorizontal: 10 
+  },
   
   // STYLES DE LA MODALE
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },

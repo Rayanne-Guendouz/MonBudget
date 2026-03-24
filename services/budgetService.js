@@ -40,6 +40,52 @@ export const addMouvement = async (mouvement) => {
     console.error("Erreur ajout mouvement:", error);
   }
 };
+
+export const addMouvementEtRecurrence = async (mouvement, occurrences = 1, frequenceLabel = 'Ponctuel') => {
+  try {
+    // Déterminer le nombre de mois à ajouter selon la fréquence
+    let sautMois = 1; 
+    if (frequenceLabel.toLowerCase().includes('trimestriel')) sautMois = 3;
+    if (frequenceLabel.toLowerCase().includes('semestriel')) sautMois = 6;
+    if (frequenceLabel.toLowerCase().includes('annuel')) sautMois = 12;
+    if (frequenceLabel.toLowerCase().includes('hebdomadaire')) sautMois = 0; // Cas particulier si besoin (7 jours)
+
+    for (let i = 0; i < occurrences; i++) {
+      let dateCalcul = new Date(mouvement.date);
+      
+      if (sautMois === 0) {
+        // Logique par semaine (7 jours * i)
+        dateCalcul.setDate(dateCalcul.getDate() + (i * 7));
+      } else {
+        // Logique par mois (saut * i)
+        dateCalcul.setMonth(dateCalcul.getMonth() + (i * sautMois));
+      }
+
+      const dateString = dateCalcul.toISOString().split('T')[0];
+
+      await db.runAsync(
+        `INSERT INTO mouvements (
+          nom, date, valeur, valeur_previsionnelle, type, etat, 
+          frequence_id, categorie_id, sous_categorie_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        [
+          occurrences > 1 ? `${mouvement.nom} (${i + 1}/${occurrences})` : mouvement.nom, 
+          dateString, 
+          mouvement.valeur, 
+          mouvement.valeur_previsionnelle, 
+          mouvement.type, 
+          mouvement.etat, 
+          mouvement.frequence_id, 
+          mouvement.categorie_id, 
+          mouvement.sous_categorie_id
+        ]
+      );
+    }
+  } catch (error) {
+    console.error("Erreur ajout récurrence complexe:", error);
+  }
+};
+
   // Récupérer toutes les catégories pour ton menu déroulant
 export const getCategories = async () => {
   return await db.getAllAsync('SELECT * FROM categories;');

@@ -3,24 +3,23 @@ import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert 
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import db from '../../database';
-import { addMouvement, getCategories, getFrequences } from '../../services/budgetService';
+import { addMouvementEtRecurrence, getCategories, getFrequences } from '../../services/budgetService';
 
 export default function AddScreen() {
   const router = useRouter();
   
-  // États pour le formulaire
   const [nom, setNom] = useState('');
   const [valeur, setValeur] = useState('');
   const [valeurPrev, setValeurPrev] = useState('');
   const [type, setType] = useState<'Entrée' | 'Sortie'>('Sortie');
   const [etat, setEtat] = useState<'Encaissé' | 'En attente'>('En attente');
+  const [nbOccurrences, setNbOccurrences] = useState('1');
   
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCat, setSelectedCat] = useState('');
   const [frequences, setFrequences] = useState<any[]>([]);
   const [selectedFreq, setSelectedFreq] = useState('');
 
-  // Charger les listes au démarrage
   useEffect(() => {
     const loadData = async () => {
       const cats = await getCategories();
@@ -35,27 +34,30 @@ export default function AddScreen() {
 
   const handleSave = async () => {
     if (!nom || (!valeur && !valeurPrev)) {
-      Alert.alert("Erreur", "Merci de remplir au moins le nom et un montant.");
+      Alert.alert("Erreur", "Champs obligatoires manquants.");
       return;
     }
 
-    const nouveauMouvement = {
+    const occ = parseInt(nbOccurrences) || 1;
+    const freqSelectionnee = frequences.find(f => f.id.toString() === selectedFreq);
+    const labelFreq = freqSelectionnee ? freqSelectionnee.nom : 'Ponctuel';
+
+    const baseMouvement = {
       nom,
-      date: new Date().toISOString().split('T')[0], // Format YYYY-MM-DD
+      date: new Date().toISOString().split('T')[0],
       valeur: parseFloat(valeur) || 0,
       valeur_previsionnelle: parseFloat(valeurPrev) || 0,
       type,
-      etat,
+      etat: etat,
       frequence_id: parseInt(selectedFreq),
       categorie_id: parseInt(selectedCat),
-      sous_categorie_id: null // On pourra ajouter la gestion des sous-cat plus tard
+      sous_categorie_id: null
     };
 
-    await addMouvement(nouveauMouvement);
-    Alert.alert("Succès", "Mouvement enregistré !");
+    await addMouvementEtRecurrence(baseMouvement, occ, labelFreq);
+    Alert.alert("Succès", `${occ} mouvement(s) créé(s) !`);
     
-    // Réinitialisation et retour à l'accueil
-    setNom(''); setValeur(''); setValeurPrev('');
+    setNom(''); setValeur(''); setValeurPrev(''); setNbOccurrences('1');
     router.replace('/'); 
   };
 
@@ -79,11 +81,11 @@ export default function AddScreen() {
 
       <Text style={styles.label}>Type & État</Text>
       <View style={styles.row}>
-        <Picker style={styles.picker} selectedValue={type} onValueChange={(v) => setType(v)}>
+        <Picker style={styles.picker} selectedValue={type} onValueChange={(v) => setType(v as any)}>
           <Picker.Item label="Sortie (-)" value="Sortie" />
           <Picker.Item label="Entrée (+)" value="Entrée" />
         </Picker>
-        <Picker style={styles.picker} selectedValue={etat} onValueChange={(v) => setEtat(v)}>
+        <Picker style={styles.picker} selectedValue={etat} onValueChange={(v) => setEtat(v as any)}>
           <Picker.Item label="En attente" value="En attente" />
           <Picker.Item label="Encaissé" value="Encaissé" />
         </Picker>
@@ -96,9 +98,37 @@ export default function AddScreen() {
         </Picker>
       </View>
 
+      {/* --- NOUVELLE SECTION RÉCURRENCE --- */}
+      <View style={styles.divider} />
+      <Text style={styles.sectionTitle}>Récurrence (Paiement en plusieurs fois)</Text>
+      
+      <View style={styles.row}>
+        <View style={{ flex: 2, marginRight: 10 }}>
+          <Text style={styles.label}>Fréquence</Text>
+          <View style={styles.pickerContainer}>
+            <Picker selectedValue={selectedFreq} onValueChange={(v) => setSelectedFreq(v)}>
+              {frequences.map(f => <Picker.Item key={f.id} label={f.nom} value={f.id.toString()} />)}
+            </Picker>
+          </View>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.label}>Nb de fois</Text>
+          <TextInput 
+            style={styles.input} 
+            value={nbOccurrences} 
+            onChangeText={setNbOccurrences} 
+            keyboardType="numeric" 
+            placeholder="1"
+          />
+        </View>
+      </View>
+      {/* ----------------------------------- */}
+
       <TouchableOpacity style={styles.button} onPress={handleSave}>
         <Text style={styles.buttonText}>Enregistrer</Text>
       </TouchableOpacity>
+      
+      <View style={{ height: 40 }} /> 
     </ScrollView>
   );
 }
@@ -106,11 +136,13 @@ export default function AddScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: '#fff' },
   title: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, color: '#2c3e50' },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#34495e', marginTop: 10 },
   label: { fontSize: 14, fontWeight: '600', color: '#7f8c8d', marginBottom: 5, marginTop: 15 },
   input: { borderWidth: 1, borderColor: '#ddd', padding: 12, borderRadius: 8, fontSize: 16 },
-  row: { flexDirection: 'row', justifyContent: 'space-between' },
-  picker: { flex: 1, height: 50 },
-  pickerContainer: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  picker: { flex: 1 },
+  pickerContainer: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, marginBottom: 5 },
+  divider: { height: 1, backgroundColor: '#eee', marginVertical: 20 },
   button: { backgroundColor: '#3498db', padding: 15, borderRadius: 10, marginTop: 30, alignItems: 'center' },
   buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
 });
