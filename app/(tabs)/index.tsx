@@ -199,11 +199,11 @@ export default function HomeScreen() {
   };
 
   useFocusEffect(
-  useCallback(() => { 
-    loadData(); 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentDate, viewMode,triParType,triParCategorie])
-);
+    useCallback(() => { 
+      loadData(); 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentDate, viewMode,triParType,triParCategorie])
+  );
 
   // Ouvrir la modale de pointage
   const openPointerModal = (item: Mouvement) => {
@@ -256,13 +256,10 @@ export default function HomeScreen() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.container}>
-        {/* Affichage des soldes */}
         
         <View style={styles.headerNav}>
           {/* Bouton de Reset à gauche */}
-          <TouchableOpacity onPress={handleResetDatabase} style={styles.resetBtn}>
-            <Text style={{ fontSize: 18 }}>🗑️</Text>
-          </TouchableOpacity>
+          <TouchableOpacity onPress={handleResetDatabase} style={styles.resetBtn}><Text style={{ fontSize: 18 }}>🗑️</Text></TouchableOpacity>
           {/* Bouton pour basculer Mois / Année */}
           <TouchableOpacity onPress={() => setViewMode(viewMode === 'mensuel' ? 'annuel' : 'mensuel')} style={styles.modeToggle}>
             <Text style={styles.modeToggleText}>{viewMode === 'mensuel' ? 'MOIS' : 'ANNÉE'}</Text>
@@ -303,13 +300,11 @@ export default function HomeScreen() {
             }}
           >
             <View style={[styles.checkbox, triParType && styles.checkboxActive]}>
-              {triParType && <Text style={styles.checkmark}>✓</Text>}
+              {triParType ? <Text style={styles.checkmark}>✓</Text> : null}
             </View>
             <Text style={styles.filterLabel}>Par Type</Text>
           </TouchableOpacity>
-
-          <View style={{ width: 20 }} /> {/* Petit espace entre les deux */}
-
+          <View style={{ width: 20 }}/>{/* Petit espace entre les deux */}
           {/* Tri par Catégorie */}
           <TouchableOpacity 
             style={styles.filterItem} 
@@ -331,7 +326,6 @@ export default function HomeScreen() {
           refreshing={refreshing} // État du chargement
           onRefresh={onRefresh}   // Fonction déclenchée au tirage
           renderItem={({ item }) => {
-            // SI C'EST UN HEADER
             if ('isHeader' in item && item.isHeader) {
               return (
                 <View style={styles.sectionHeader}>
@@ -340,31 +334,29 @@ export default function HomeScreen() {
               );
             }
 
-            // SI C'EST UN MOUVEMENT (ton code habituel)
-            const mouvement = item as Mouvement;
+            const m = item as Mouvement;
             return (
-              <Swipeable renderRightActions={() => renderRightActions(Number(mouvement.id))} overshootRight={false}>
+              <Swipeable renderRightActions={() => renderRightActions(Number(m.id))} overshootRight={false}>
                 <TouchableOpacity 
                   activeOpacity={0.7}
-                  style={[styles.card, mouvement.etat === 'Encaissé' ? styles.cardEncaissee : styles.cardAttente]}
-                  onPress={() => openPointerModal(mouvement)}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  style={[styles.card, m.etat === 'Encaissé' ? styles.cardEncaissee : styles.cardAttente]}
+                  onPress={() => openPointerModal(m)}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <Text style={{ fontSize: 20, marginRight: 12 }}>
-                      {mouvement.type === 'Sortie' ? '💸' : '💰'}
+                      {m.type === 'Sortie' ? '💸' : '💰'}
                     </Text>
                     <View>
-                      <Text style={styles.nom}>{mouvement.nom}</Text>
+                      <Text style={styles.nom}>{m.nom}</Text>
                       <Text style={styles.date}>
-                        {mouvement.date} 
-                        {mouvement.categorie_nom && !triParCategorie ? ` • ${mouvement.categorie_nom}` : ''}
-                        {mouvement.sous_categorie_nom ? ` > ${mouvement.sous_categorie_nom}` : ''}
+                        {m.date}
+                        {m.categorie_nom && !triParCategorie ? ` • ${m.categorie_nom}` : ''}
+                        {m.sous_categorie_nom ? ` > ${m.sous_categorie_nom}` : ''}
                       </Text>
                     </View>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[styles.valeurItem, { color: mouvement.type === 'Sortie' ? '#e74c3c' : '#2ecc71' }]}>
-                      {mouvement.type === 'Sortie' ? '-' : '+'} {mouvement.etat === 'Encaissé' ? mouvement.valeur.toFixed(2) : mouvement.valeur_previsionnelle.toFixed(2)} €
+                    <Text style={[styles.valeurItem, { color: m.type === 'Sortie' ? '#e74c3c' : '#2ecc71' }]}>
+                      {m.type === 'Sortie' ? '-' : '+'} {m.etat === 'Encaissé' ? m.valeur.toFixed(2) : m.valeur_previsionnelle.toFixed(2)} €
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -540,5 +532,5 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#ffa39e',
-  },
+  }
 });
