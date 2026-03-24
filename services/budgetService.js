@@ -55,3 +55,24 @@ export const getFrequences = async () => {
   return await db.getAllAsync('SELECT * FROM frequences;');
 
 };
+
+// Changer l'état d'un mouvement (Passer de 'En attente' à 'Encaissé')
+export const pointerMouvement = async (id, valeurReelle) => {
+  try {
+    await db.runAsync(
+      'UPDATE mouvements SET etat = "Encaissé", valeur = ? WHERE id = ?;',
+      [valeurReelle, id]
+    );
+  } catch (error) {
+    console.error("Erreur lors du pointage:", error);
+  }
+};
+
+// Supprimer un mouvement
+export const deleteMouvement = async (id) => {
+  try {
+    await db.runAsync('DELETE FROM mouvements WHERE id = ?;', [id]);
+  } catch (error) {
+    console.error("Erreur lors de la suppression:", error);
+  }
+};
