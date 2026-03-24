@@ -1,98 +1,88 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, FlatList, StyleSheet, SafeAreaView } from 'react-native';
+import db from '../../database'; // Note le '../../' car on est plus profond dans les dossiers
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+// Définition du type selon ton schéma
+interface Mouvement {
+  id: number;
+  nom: string;
+  date: string;
+  valeur: number;
+  valeur_previsionnelle: number;
+  type: 'Entrée' | 'Sortie';
+  etat: 'Encaissé' | 'En attente';
+}
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const [mouvements, setMouvements] = useState<Mouvement[]>([]);
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const chargerMouvements = async () => {
+    try {
+      // Récupération des données
+      const tousLesMouvements = await db.getAllAsync('SELECT * FROM mouvements ORDER BY date DESC;') as Mouvement[];
+      setMouvements(tousLesMouvements);
+    } catch (error) {
+      console.error("Erreur chargement SQLite:", error);
+    }
+  };
+
+  useEffect(() => {
+    chargerMouvements();
+  }, []);
+
+  const renderItem = ({ item }: { item: Mouvement }) => (
+    <View style={styles.card}>
+      <View>
+        <Text style={styles.nom}>{item.nom}</Text>
+        <Text style={styles.date}>{item.date}</Text>
+      </View>
+      <View style={{ alignItems: 'flex-end' }}>
+        <Text style={[styles.valeur, { color: item.type === 'Sortie' ? '#e74c3c' : '#2ecc71' }]}>
+          {item.type === 'Sortie' ? '-' : '+'} {item.valeur.toFixed(2)} €
+        </Text>
+        <Text style={styles.etat}>{item.etat}</Text>
+      </View>
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.headerContainer}>
+        <Text style={styles.header}>Mon Portefeuille</Text>
+      </View>
+      
+      {mouvements.length === 0 ? (
+        <View style={styles.center}>
+          <Text style={styles.empty}>Aucune transaction pour le moment.</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={mouvements}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={renderItem}
+          contentContainerStyle={{ padding: 15 }}
+        />
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: { flex: 1, backgroundColor: '#fff' },
+  headerContainer: { padding: 20, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  header: { fontSize: 22, fontWeight: 'bold', color: '#1a1a1a' },
+  card: {
+    backgroundColor: '#f9f9f9',
+    padding: 16,
+    borderRadius: 12,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+  nom: { fontSize: 16, fontWeight: '600' },
+  date: { fontSize: 13, color: '#888', marginTop: 4 },
+  valeur: { fontSize: 16, fontWeight: '700' },
+  etat: { fontSize: 11, color: '#aaa', marginTop: 4, textTransform: 'uppercase' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  empty: { color: '#bbb' }
 });

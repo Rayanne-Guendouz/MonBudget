@@ -1,35 +1,20 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
+import { useEffect } from 'react';
+import { Stack } from 'expo-router';
+import { initDatabase } from '../../database'; // Assure-toi que database.js est à la racine
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+export default function RootLayout() {
+  
+  useEffect(() => {
+    // Initialise la base de données au tout premier lancement
+    initDatabase()
+      .then(() => console.log("Système prêt"))
+      .catch((err) => console.error("Échec du démarrage", err));
+  }, []);
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
+  // Le composant <Stack /> gère la navigation entre tes pages
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
-        }}
-      />
-    </Tabs>
+    <Stack>
+      <Stack.Screen name="index" options={{ title: 'Mon Budget' }} />
+    </Stack>
   );
 }
