@@ -87,7 +87,7 @@ export default function AddScreen() {
       etat: etat,
       frequence_id: parseInt(selectedFreq),
       categorie_id: parseInt(selectedCat),
-      sous_categorie_id: null
+      sous_categorie_id: selectedSousCat ? parseInt(selectedSousCat) : null
     };
 
     await addMouvementEtRecurrence(baseMouvement, occ, labelFreq);

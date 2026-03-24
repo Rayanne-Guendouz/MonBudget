@@ -14,6 +14,7 @@ interface Mouvement {
   valeur_previsionnelle: number;
   etat: 'Encaissé' | 'En attente';
   categorie_nom: string;
+  sous_categorie_nom: string;
 }
 
 export default function HomeScreen() {
@@ -44,16 +45,18 @@ export default function HomeScreen() {
     const year = currentDate.getFullYear();
     const month = (currentDate.getMonth() + 1).toString().padStart(2, '0');
     
-    let query = '';
-    let params: any[] = [];
-
     const baseQuery = `
       SELECT 
         m.*, 
-        c.nom AS categorie_nom 
+        c.nom AS categorie_nom,
+        sc.nom AS sous_categorie_nom
       FROM mouvements m
       LEFT JOIN categories c ON m.categorie_id = c.id
+      LEFT JOIN sous_categories sc ON m.sous_categorie_id = sc.id
     `;
+
+    let query = '';
+    let params: any[] = [];
 
     if (viewMode === 'mensuel') {
       query = `${baseQuery} WHERE m.date LIKE ? ORDER BY m.date DESC`;
@@ -63,31 +66,45 @@ export default function HomeScreen() {
       params = [`${year}-%`];
     }
 
-    const data = await db.getAllAsync(query, params) as Mouvement[];
+    try {
+      const data = await db.getAllAsync(query, params) as Mouvement[];
+      
+      // Calcul des soldes sur les données brutes
+      calculerSoldes(data);
 
-    let dataTriee = [...data];
+      // Tri des données
+      let dataTriee = [...data];
 
-    if (triParCategorie || triParType) {
-      dataTriee.sort((a, b) => {
-        // 1. Priorité au tri par Type (si activé)
-        if (triParType) {
-          if (a.type === 'Entrée' && b.type === 'Sortie') return -1;
-          if (a.type === 'Sortie' && b.type === 'Entrée') return 1;
-        }
+      if (triParCategorie || triParType) {
+        dataTriee.sort((a, b) => {
+          // 1. Tri par Type (Entrée avant Sortie)
+          if (triParType) {
+            if (a.type === 'Entrée' && b.type === 'Sortie') return -1;
+            if (a.type === 'Sortie' && b.type === 'Entrée') return 1;
+          }
 
-        // 2. Tri par Catégorie (si activé)
-        if (triParCategorie) {
-          // On compare les noms de catégories (ou les IDs si tu préfères)
-          const catA = a.categorie_nom || ""; 
-          const catB = b.categorie_nom || "";
-          return catA.localeCompare(catB);
-        }
+          // 2. Tri par Catégorie
+          if (triParCategorie) {
+            const catA = (a.categorie_nom || "Sans catégorie").toLowerCase();
+            const catB = (b.categorie_nom || "Sans catégorie").toLowerCase();
+            
+            if (catA !== catB) return catA.localeCompare(catB);
 
-        return 0;
-      });
-}
+            // Si même catégorie, tri par sous-catégorie
+            const subA = (a.sous_categorie_nom || "").toLowerCase();
+            const subB = (b.sous_categorie_nom || "").toLowerCase();
+            return subA.localeCompare(subB);
+          }
+          return 0;
+        });
+      }
 
-setMouvements(dataTriee);
+      // MISE À JOUR DU STATE (Vérifie bien que cette ligne est DANS loadData)
+      setMouvements(dataTriee);
+
+    } catch (error) {
+      console.error("Erreur SQL loadData:", error);
+    }
   };
 
   const calculerSoldes = (data: Mouvement[]) => {
@@ -254,7 +271,9 @@ setMouvements(dataTriee);
                   <View>
                     <Text style={styles.nom}>{item.nom}</Text>
                     <Text style={styles.date}>
-                      {item.date} {item.categorie_nom ? `• ${item.categorie_nom}` : ''}
+                      {item.date} 
+                      {item.categorie_nom ? ` • ${item.categorie_nom}` : ''}
+                      {item.sous_categorie_nom ? ` > ${item.sous_categorie_nom}` : ''}
                     </Text>
                   </View>
                 </View>
